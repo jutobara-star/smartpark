@@ -1,5 +1,10 @@
 import React, { useState, useEffect } from 'react';
- 
+
+// URL del backend. En desarrollo local usa 127.0.0.1:8000.
+// En producción, Vite toma el valor de la variable de entorno VITE_API_URL
+// que configurarás en Vercel (ej: https://tu-backend.onrender.com)
+const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
+
 export default function App() {
   const [currentView, setCurrentView] = useState('login'); // 'login', 'dashboard', 'payment', 'success', 'recovery', 'register'
   const [user, setUser] = useState(null);
@@ -11,6 +16,8 @@ export default function App() {
   const [password, setPassword] = useState('');
   const [nombre, setNombre] = useState('');
   const [telefono, setTelefono] = useState('');
+  const [codigoRegistro, setCodigoRegistro] = useState('');
+  const [emailPendiente, setEmailPendiente] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -22,7 +29,7 @@ export default function App() {
   
   // Tarifa: $25 CLP por minuto
   const RATE_PER_MINUTE = 25;
- 
+
   useEffect(() => {
     let interval;
     if (isParking && startTime) {
@@ -35,26 +42,26 @@ export default function App() {
     }
     return () => clearInterval(interval);
   }, [isParking, startTime]);
- 
+
   const handleLogin = async (e) => {
     e.preventDefault();
     setErrorMsg('');
     setSuccessMsg('');
     setIsLoading(true);
- 
+
     try {
-      const response = await fetch('http://127.0.0.1:8000/api/login', {
+      const response = await fetch(`${API_URL}/api/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, rut, patente, password }),
       });
- 
+
       const data = await response.json();
- 
+
       if (!response.ok) {
         throw new Error(data.detail || 'Error al iniciar sesión');
       }
- 
+
       setUser({ 
         name: data.datos_sesion.email.split('@')[0], 
         email: data.datos_sesion.email,
@@ -73,24 +80,24 @@ export default function App() {
       setIsLoading(false);
     }
   };
- 
+
   const handleRecovery = async (e) => {
     e.preventDefault();
     setErrorMsg('');
     setSuccessMsg('');
     setIsLoading(true);
- 
+
     try {
-      const response = await fetch('http://127.0.0.1:8000/api/recuperar', {
+      const response = await fetch(`${API_URL}/api/recuperar`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ rut, email }),
       });
- 
+
       const data = await response.json();
- 
+
       if (!response.ok) throw new Error(data.detail || 'Error al recuperar contraseña');
- 
+
       setSuccessMsg(data.mensaje);
       
     } catch (err) {
@@ -99,33 +106,32 @@ export default function App() {
       setIsLoading(false);
     }
   };
- 
+
   const handleRegister = async (e) => {
     e.preventDefault();
     setErrorMsg('');
     setSuccessMsg('');
     setIsLoading(true);
- 
+
     try {
-      const response = await fetch('http://127.0.0.1:8000/api/registro', {
+      const response = await fetch(`${API_URL}/api/registro/solicitar`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ nombre, email, rut, patente, telefono, password }),
       });
- 
+
       const data = await response.json();
- 
+
       if (!response.ok) {
         throw new Error(data.detail || 'Error al registrar la cuenta');
       }
- 
-      // Limpiamos el formulario y devolvemos al usuario al login para que ingrese
-      setSuccessMsg(data.mensaje || 'Cuenta creada correctamente. Ya puedes iniciar sesión.');
-      setNombre('');
-      setTelefono('');
-      setPassword('');
-      setCurrentView('login');
- 
+
+      // Guardamos a qué correo se envió el código y pasamos a la vista de verificación
+      setEmailPendiente(email);
+      setSuccessMsg(data.mensaje);
+      setCodigoRegistro('');
+      setCurrentView('verify');
+
     } catch (err) {
       if (err instanceof TypeError) {
         setErrorMsg("No se pudo conectar con el servidor. ¿Está Python encendido?");
@@ -136,31 +142,100 @@ export default function App() {
       setIsLoading(false);
     }
   };
- 
+
+  const handleConfirmarCodigo = async (e) => {
+    e.preventDefault();
+    setErrorMsg('');
+    setSuccessMsg('');
+    setIsLoading(true);
+
+    try {
+      const response = await fetch(`${API_URL}/api/registro/confirmar`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: emailPendiente, codigo: codigoRegistro }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.detail || 'El código ingresado no es válido');
+      }
+
+      // Cuenta creada de verdad: limpiamos todo y devolvemos al login
+      setSuccessMsg(data.mensaje);
+      setNombre('');
+      setTelefono('');
+      setPassword('');
+      setCodigoRegistro('');
+      setEmailPendiente('');
+      setCurrentView('login');
+
+    } catch (err) {
+      if (err instanceof TypeError) {
+        setErrorMsg("No se pudo conectar con el servidor. ¿Está Python encendido?");
+      } else {
+        setErrorMsg(err.message);
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleReenviarCodigo = async () => {
+    setErrorMsg('');
+    setSuccessMsg('');
+    setIsLoading(true);
+
+    try {
+      const response = await fetch(`${API_URL}/api/registro/reenviar`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: emailPendiente }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.detail || 'No se pudo reenviar el código');
+      }
+
+      setSuccessMsg(data.mensaje);
+    } catch (err) {
+      if (err instanceof TypeError) {
+        setErrorMsg("No se pudo conectar con el servidor. ¿Está Python encendido?");
+      } else {
+        setErrorMsg(err.message);
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const startParking = () => {
     setStartTime(new Date());
     setIsParking(true);
     setElapsedMinutes(0);
   };
- 
+
   const stopParking = () => {
     setIsParking(false);
     setCurrentView('payment');
   };
- 
+
   const processPayment = (e) => {
     e.preventDefault();
     setCurrentView('success');
   };
- 
+
   const resetApp = () => {
     setStartTime(null);
     setElapsedMinutes(0);
     setCurrentView('dashboard');
   };
- 
+
   const totalCost = elapsedMinutes * RATE_PER_MINUTE;
- 
+
   return (
     <>
       {/* VISTA DE LOGIN */}
@@ -181,14 +256,14 @@ export default function App() {
                 <p className="text-sm text-red-700 font-medium">{errorMsg}</p>
               </div>
             )}
- 
+
             {successMsg && (
               <div className="mb-4 bg-green-50 border-l-4 border-green-500 p-4 flex items-start">
                 <span className="text-green-500 mr-2 shrink-0 text-xl">✅</span>
                 <p className="text-sm text-green-700 font-medium">{successMsg}</p>
               </div>
             )}
- 
+
             <form onSubmit={handleLogin} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Correo Electrónico</label>
@@ -246,7 +321,7 @@ export default function App() {
           </div>
         </div>
       )}
- 
+
       {/* VISTA DE REGISTRO */}
       {currentView === 'register' && (
         <div className="min-h-screen bg-gray-100 flex flex-col justify-center items-center p-4">
@@ -258,14 +333,14 @@ export default function App() {
             </div>
             <h1 className="text-2xl font-bold text-center text-gray-800 mb-2">Crear Cuenta</h1>
             <p className="text-center text-gray-500 mb-6">Regístrate para usar SmartPark</p>
- 
+
             {errorMsg && (
               <div className="mb-4 bg-red-50 border-l-4 border-red-500 p-4 flex items-start">
                 <span className="text-red-500 mr-2 shrink-0 text-xl">⚠️</span>
                 <p className="text-sm text-red-700 font-medium">{errorMsg}</p>
               </div>
             )}
- 
+
             <form onSubmit={handleRegister} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Nombre Completo</label>
@@ -329,7 +404,7 @@ export default function App() {
                 {isLoading ? 'Creando cuenta...' : 'Registrarme'}
               </button>
             </form>
- 
+
             <div className="mt-6 text-center">
               <button onClick={() => { setCurrentView('login'); setErrorMsg(''); setSuccessMsg(''); }} className="text-sm text-gray-500 hover:text-gray-800 font-medium">
                 ← Volver al inicio de sesión
@@ -338,28 +413,95 @@ export default function App() {
           </div>
         </div>
       )}
- 
-      {/* VISTA DE RECUPERACIÓN DE CONTRASEÑA */}
-      {currentView === 'recovery' && (
+
+      {/* VISTA DE VERIFICACIÓN DE CÓDIGO (confirma que el correo es real) */}
+      {currentView === 'verify' && (
         <div className="min-h-screen bg-gray-100 flex flex-col justify-center items-center p-4">
           <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-md">
-            <h2 className="text-2xl font-bold text-center text-gray-800 mb-2">Recuperar Acceso</h2>
-            <p className="text-center text-gray-500 mb-6">Ingresa tus datos para restablecer tu contraseña.</p>
- 
+            <div className="flex justify-center mb-6">
+              <div className="bg-blue-600 p-4 rounded-full text-white text-4xl">
+                📧
+              </div>
+            </div>
+            <h1 className="text-2xl font-bold text-center text-gray-800 mb-2">Verifica tu correo</h1>
+            <p className="text-center text-gray-500 mb-6">
+              Enviamos un código a <span className="font-semibold text-gray-700">{emailPendiente}</span>. Ingrésalo para activar tu cuenta.
+            </p>
+
             {errorMsg && (
               <div className="mb-4 bg-red-50 border-l-4 border-red-500 p-4 flex items-start">
                 <span className="text-red-500 mr-2 shrink-0 text-xl">⚠️</span>
                 <p className="text-sm text-red-700 font-medium">{errorMsg}</p>
               </div>
             )}
- 
+
             {successMsg && (
               <div className="mb-4 bg-green-50 border-l-4 border-green-500 p-4 flex items-start">
                 <span className="text-green-500 mr-2 shrink-0 text-xl">✅</span>
                 <p className="text-sm text-green-700 font-medium">{successMsg}</p>
               </div>
             )}
- 
+
+            <form onSubmit={handleConfirmarCodigo} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Código de verificación</label>
+                <input
+                  type="text" required maxLength={6}
+                  value={codigoRegistro}
+                  onChange={(e) => setCodigoRegistro(e.target.value.replace(/\D/g, ''))}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-center text-2xl tracking-[0.5em] font-mono"
+                  placeholder="000000"
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={isLoading}
+                className={`w-full text-white font-bold py-3 rounded-lg transition mt-4 ${isLoading ? 'bg-blue-400' : 'bg-blue-600 hover:bg-blue-700'}`}
+              >
+                {isLoading ? 'Verificando...' : 'Confirmar cuenta'}
+              </button>
+            </form>
+
+            <div className="mt-6 text-center space-y-2">
+              <button
+                onClick={handleReenviarCodigo}
+                disabled={isLoading}
+                className="text-sm text-blue-600 hover:underline font-medium block w-full"
+              >
+                Reenviar código
+              </button>
+              <button
+                onClick={() => { setCurrentView('register'); setErrorMsg(''); setSuccessMsg(''); }}
+                className="text-sm text-gray-500 hover:text-gray-800 font-medium block w-full"
+              >
+                ← Corregir mis datos
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* VISTA DE RECUPERACIÓN DE CONTRASEÑA */}
+      {currentView === 'recovery' && (
+        <div className="min-h-screen bg-gray-100 flex flex-col justify-center items-center p-4">
+          <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-md">
+            <h2 className="text-2xl font-bold text-center text-gray-800 mb-2">Recuperar Acceso</h2>
+            <p className="text-center text-gray-500 mb-6">Ingresa tus datos para restablecer tu contraseña.</p>
+
+            {errorMsg && (
+              <div className="mb-4 bg-red-50 border-l-4 border-red-500 p-4 flex items-start">
+                <span className="text-red-500 mr-2 shrink-0 text-xl">⚠️</span>
+                <p className="text-sm text-red-700 font-medium">{errorMsg}</p>
+              </div>
+            )}
+
+            {successMsg && (
+              <div className="mb-4 bg-green-50 border-l-4 border-green-500 p-4 flex items-start">
+                <span className="text-green-500 mr-2 shrink-0 text-xl">✅</span>
+                <p className="text-sm text-green-700 font-medium">{successMsg}</p>
+              </div>
+            )}
+
             <form onSubmit={handleRecovery} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">RUT Registrado</label>
@@ -374,7 +516,7 @@ export default function App() {
                 {isLoading ? 'Buscando...' : 'Restablecer Contraseña'}
               </button>
             </form>
- 
+
             <div className="mt-6 text-center">
               <button onClick={() => { setCurrentView('login'); setErrorMsg(''); setSuccessMsg(''); }} className="text-sm text-gray-500 hover:text-gray-800 font-medium">
                 ← Volver al inicio de sesión
@@ -383,7 +525,7 @@ export default function App() {
           </div>
         </div>
       )}
- 
+
       {/* VISTA DEL DASHBOARD */}
       {currentView === 'dashboard' && (
         <div className="min-h-screen bg-gray-50">
@@ -399,7 +541,7 @@ export default function App() {
               <span className="text-xl">🚪</span>
             </button>
           </header>
- 
+
           <main className="p-6 max-w-md mx-auto">
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 mb-6">
               <div className="flex items-center space-x-3 mb-2 text-gray-800">
@@ -417,7 +559,7 @@ export default function App() {
                 </div>
               </div>
             </div>
- 
+
             <div className="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden">
               <div className={`p-6 text-center text-white transition-colors duration-500 ${isParking ? 'bg-green-500' : 'bg-gray-800'}`}>
                 <h2 className="text-xl font-bold mb-2">
@@ -429,7 +571,7 @@ export default function App() {
                     : '00:00'}
                 </div>
               </div>
- 
+
               <div className="p-6">
                 <div className="flex justify-between items-center mb-6">
                   <div className="flex items-center space-x-2 text-gray-600">
@@ -438,12 +580,12 @@ export default function App() {
                   </div>
                   <span className="font-bold text-gray-800">${RATE_PER_MINUTE} / min</span>
                 </div>
- 
+
                 <div className="flex justify-between items-center mb-8 pb-6 border-b border-gray-100">
                   <span className="text-gray-600">Total:</span>
                   <span className="text-3xl font-bold text-blue-600">${totalCost.toLocaleString('es-CL')}</span>
                 </div>
- 
+
                 {!isParking ? (
                   <button onClick={startParking} className="w-full bg-green-500 text-white font-bold py-4 rounded-xl hover:bg-green-600 transition shadow-md text-lg">
                     Comenzar a Estacionar
@@ -458,7 +600,7 @@ export default function App() {
           </main>
         </div>
       )}
- 
+
       {/* VISTA DE PAGO */}
       {currentView === 'payment' && (
         <div className="min-h-screen bg-gray-50 flex flex-col p-4">
@@ -489,7 +631,7 @@ export default function App() {
           </div>
         </div>
       )}
- 
+
       {/* VISTA DE ÉXITO */}
       {currentView === 'success' && (
         <div className="min-h-screen bg-blue-600 flex flex-col justify-center items-center p-6 text-white text-center">
