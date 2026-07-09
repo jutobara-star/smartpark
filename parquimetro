@@ -1,0 +1,42 @@
+import re
+
+def validar_rut(rut_completo):
+    """Valida el formato y el dígito verificador de un RUT chileno en Python."""
+    # 1. Validar el formato con expresión regular
+    if not re.match(r"^[0-9]+-[0-9kK]$", rut_completo):
+        return False
+    
+    # 2. Separar el número del dígito verificador
+    rut, dv = rut_completo.split('-')
+    
+    # 3. Algoritmo Módulo 11
+    rut_reverso = map(int, reversed(rut))
+    factores = [2, 3, 4, 5, 6, 7]
+    suma = sum(d * factores[i % 6] for i, d in enumerate(rut_reverso))
+    
+    dv_esperado = 11 - (suma % 11)
+    if dv_esperado == 11:
+        dv_esperado = '0'
+    elif dv_esperado == 10:
+        dv_esperado = 'K'
+    else:
+        dv_esperado = str(dv_esperado)
+        
+    return dv.upper() == dv_esperado
+
+def validar_patente(patente):
+    """Valida que la patente tenga un formato chileno válido."""
+    # Formato antiguo (AA-11-11) o nuevo (AAAA-11)
+    es_formato_antiguo = bool(re.match(r"^[A-Z]{2}-[0-9]{4}$", patente))
+    es_formato_nuevo = bool(re.match(r"^[A-Z]{4}-[0-9]{2}$", patente))
+    
+    return es_formato_antiguo or es_formato_nuevo
+
+# --- Ejemplo de uso en tu servidor ---
+rut_ingresado = "11111111-1"
+patente_ingresada = "ABCD-12"
+
+if validar_rut(rut_ingresado) and validar_patente(patente_ingresada):
+    print("Datos correctos. Permitir inicio de sesión.")
+else:
+    print("Error: RUT o Patente inválidos.")
